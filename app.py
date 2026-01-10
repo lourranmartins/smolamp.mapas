@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,6 +9,15 @@ import io
 import re
 import os
 
+# Tenta importar folium para o mapa (se não tiver, avisa)
+try:
+    import folium
+    from folium.plugins import HeatMap
+    import streamlit.components.v1 as components
+    HAS_FOLIUM = True
+except ImportError:
+    HAS_FOLIUM = False
+
 # ==========================================
 # CONFIGURAÇÃO DA PÁGINA
 # ==========================================
@@ -19,49 +27,27 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilo para deixar com cara de App
+# Estilo para deixar com cara de App Profissional
 st.markdown("""
 <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     .stButton>button {width: 100%; border-radius: 5px; height: 3em;}
-    .css-1v0mbdj.etr89bj1 {display: block;} 
+    div[data-testid="stMetricValue"] {font-size: 24px;}
 </style>
 """, unsafe_allow_html=True)
 
-# 1. Imports e Instalação Silenciosa
-try:
-    import fpdf
-    import folium
-    from folium.plugins import HeatMap
-except ImportError:
-    os.system('pip install fpdf folium -q')
-    import fpdf
-    import folium
-    from folium.plugins import HeatMap
-
 # ==========================================
-# 2. COORDENADAS GEOGRÁFICAS (CACHOEIRAS DE MACACU)
+# 2. COORDENADAS (CACHOEIRAS DE MACACU)
 # ==========================================
-# Mapeamento aproximado dos centros dos bairros para gerar o calor
 COORDS_BAIRROS = {
-    'CENTRO': [-22.4635, -42.6539],
-    'JAPUIBA': [-22.5621, -42.6923],
-    'JAPUÍBA': [-22.5621, -42.6923],
-    'PAPUCAIA': [-22.6134, -42.7188],
-    'BOCA DO MATO': [-22.4282, -42.6321],
-    'VALÉRIO': [-22.4705, -42.6602],
-    'VALERIO': [-22.4705, -42.6602],
-    'CAMPO DO PRADO': [-22.4589, -42.6580],
-    'VENEZA': [-22.6050, -42.7100],
-    'RIBEIRA': [-22.6200, -42.7300],
-    'MARAPORÃ': [-22.6300, -42.7400],
-    'CASTÁLIA': [-22.4500, -42.6400],
-    'CASTALIA': [-22.4500, -42.6400],
-    'GANGURI': [-22.4800, -42.6700],
-    'SÃO FRANCISCO DE ASSIS': [-22.4650, -42.6650],
-    'BOA VISTA': [-22.4550, -42.6450]
+    'CENTRO': [-22.4635, -42.6539], 'JAPUIBA': [-22.5621, -42.6923], 'JAPUÍBA': [-22.5621, -42.6923],
+    'PAPUCAIA': [-22.6134, -42.7188], 'BOCA DO MATO': [-22.4282, -42.6321], 'VALÉRIO': [-22.4705, -42.6602],
+    'VALERIO': [-22.4705, -42.6602], 'CAMPO DO PRADO': [-22.4589, -42.6580], 'VENEZA': [-22.6050, -42.7100],
+    'RIBEIRA': [-22.6200, -42.7300], 'MARAPORÃ': [-22.6300, -42.7400], 'CASTÁLIA': [-22.4500, -42.6400],
+    'CASTALIA': [-22.4500, -42.6400], 'GANGURI': [-22.4800, -42.6700], 'SÃO FRANCISCO DE ASSIS': [-22.4650, -42.6650],
+    'BOA VISTA': [-22.4550, -42.6450], 'GUAPIAÇU': [-22.4900, -42.6800], 'GUAPIACU': [-22.4900, -42.6800]
 }
 
 # ==========================================
@@ -74,12 +60,6 @@ def fix_text(texto):
     for k, v in mapa.items(): texto = texto.replace(k, v)
     try: return texto.encode('latin-1', 'replace').decode('latin-1')
     except: return texto
-
-def limpar_texto_pdf(texto):
-    if not isinstance(texto, str): return str(texto)
-    mapa_emojis = {'📍': '>>', '⚠️': '[!]', '🚨': '[!!!]', '✅': '[OK]', '📊': '', '🤖': 'Analise:'}
-    for emoji, substituto in mapa_emojis.items(): texto = texto.replace(emoji, substituto)
-    return fix_text(texto)
 
 def converter_data_hibrida(val):
     val_str = str(val).strip()
@@ -96,9 +76,9 @@ def converter_data_hibrida(val):
         except: return pd.NaT
     return pd.NaT
 
-def converter_ico_para_png_buffer(caminho_ou_buffer):
+def converter_ico_para_png_buffer(caminho):
     try:
-        img = Image.open(caminho_ou_buffer)
+        img = Image.open(caminho)
         output = io.BytesIO()
         img.save(output, format='PNG')
         return output.getvalue()
@@ -118,13 +98,13 @@ def gerar_analise_robusta(stats):
     prev_total = stats.get('preventiva_total', 0)
     
     if eficiencia >= 1.0:
-        texto = f"O período analisado demonstra uma performance operacional EXCELENTE. A equipe atingiu uma taxa de resolução de {eficiencia:.1%}, o que indica não apenas o atendimento integral da demanda recebida ({entradas} solicitações), mas também a redução proativa do passivo histórico. O sistema opera atualmente em regime de superávit técnico, demonstrando alta capacidade de resposta."
+        texto = f"O período analisado demonstra uma performance operacional EXCELENTE. A equipe atingiu uma taxa de resolução de {eficiencia:.1%}, o que indica não apenas o atendimento integral da demanda recebida ({entradas} solicitações), mas também a redução proativa do passivo histórico."
     elif eficiencia >= 0.8:
-        texto = f"O cenário operacional apresenta um desempenho SÓLIDO e equilibrado. Com uma taxa de eficácia de {eficiencia:.1%}, a equipe conseguiu acompanhar o ritmo de entrada de novos pedidos, mantendo a estabilidade do sistema de iluminação pública. A resposta às {entradas} novas solicitações foi tempestiva."
+        texto = f"O cenário operacional apresenta um desempenho SÓLIDO e equilibrado. Com uma taxa de eficácia de {eficiencia:.1%}, a equipe conseguiu acompanhar o ritmo de entrada de novos pedidos ({entradas}), mantendo a estabilidade do sistema de iluminação pública."
     elif eficiencia >= 0.5:
-        texto = f"O período inspira ATENÇÃO gerencial. A taxa de resolução de {eficiencia:.1%} revela que a capacidade de execução atual está sendo pressionada pela demanda de entrada. Foram abertos {entradas} chamados, mas apenas {realizados} foram concluídos via ordem de serviço, gerando um acúmulo de {pendentes} novas pendências."
+        texto = f"O período inspira ATENÇÃO gerencial. A taxa de resolução de {eficiencia:.1%} revela que a capacidade de execução atual está sendo pressionada pela demanda. Foram abertos {entradas} chamados, mas apenas {realizados} foram concluídos via ordem de serviço, gerando um acúmulo de {pendentes} novas pendências."
     else:
-        texto = f"O diagnóstico é CRÍTICO. Observa-se um gargalo operacional severo, com taxa de sucesso de apenas {eficiencia:.1%}. A discrepância entre o volume de solicitações ({entradas}) e a capacidade de entrega ({realizados}) está gerando um passivo insustentável a longo prazo."
+        texto = f"O diagnóstico é CRÍTICO. Observa-se um gargalo operacional severo, com taxa de sucesso de apenas {eficiencia:.1%}. A discrepância entre o volume de solicitações ({entradas}) e a capacidade de entrega ({realizados}) está gerando um passivo insustentável."
 
     if chuva > 0:
         texto += f" Ressalta-se que a produtividade foi impactada por fatores climáticos adversos: foram registrados {chuva} dias de chuva, reduzindo a janela operacional efetiva para apenas {dias_uteis} dias úteis."
@@ -166,82 +146,8 @@ class PDFReport(FPDF):
         self.set_font('Arial', 'B', 12); self.set_fill_color(220, 220, 220); self.set_text_color(0, 0, 0)
         self.cell(0, 8, fix_text(title), 0, 1, 'L', 1); self.ln(2)
 
-    def top5_box(self, title, series):
-        self.set_font('Arial', 'B', 10); self.cell(0, 6, fix_text(title), 0, 1, 'L'); self.set_font('Arial', '', 9)
-        if len(series) > 0:
-            for b, v in series.items():
-                self.cell(140, 5, fix_text(str(b)[:45]), 0, 0)
-                self.cell(20, 5, str(v), 0, 1, 'R')
-        else: self.cell(0, 5, "Sem dados.", 0, 1)
-        self.ln(3)
-
-def gerar_pdf_executivo(stats, texto_ia):
-    pdf = PDFReport(); pdf.add_page()
-    pdf.set_font('Arial', 'B', 14); pdf.cell(0, 10, fix_text('RELATÓRIO DE GESTÃO - ILUMINAÇÃO PÚBLICA'), 0, 1, 'C'); pdf.ln(5)
-    
-    pdf.section_title("1. DIAGNÓSTICO TÉCNICO DETALHADO")
-    pdf.set_font('Arial', '', 10); pdf.multi_cell(0, 5, fix_text(texto_ia)); pdf.ln(5)
-    
-    pdf.section_title("2. BALANÇO OPERACIONAL (PERÍODO)")
-    pdf.ln(2)
-    pdf.set_font('Arial', 'B', 10)
-    w = 47.5
-    pdf.cell(w, 10, "TOTAL (Entrada)", 1, 0, 'C'); pdf.cell(w, 10, "REALIZADOS", 1, 0, 'C')
-    pdf.cell(w, 10, "PENDENTES (Atual)", 1, 0, 'C'); pdf.cell(w, 10, "EFICIENCIA %", 1, 1, 'C')
-    pdf.set_font('Arial', 'B', 14)
-    pdf.cell(w, 15, str(stats['entradas']), 1, 0, 'C')
-    pdf.set_text_color(0, 100, 0); pdf.cell(w, 15, str(stats['realizados']), 1, 0, 'C')
-    pdf.set_text_color(150, 0, 0); pdf.cell(w, 15, str(stats['pendentes_safra']), 1, 0, 'C')
-    pdf.set_text_color(0, 0, 0); pdf.cell(w, 15, f"{stats['eficiencia']:.1%}", 1, 1, 'C'); pdf.ln(15)
-    
-    if stats['preventiva_total'] > 0:
-        pdf.section_title("3. ESTIMATIVA DE MANUTENÇÃO PREVENTIVA")
-        pdf.set_font('Arial', '', 10)
-        txt_prev = f"• Média Informada: {stats['preventiva_media']} pontos/dia\n• TOTAL DE PONTOS RECUPERADOS (PREVENTIVA): +{stats['preventiva_total']}"
-        pdf.multi_cell(0, 6, fix_text(txt_prev), 1, 'L'); pdf.ln(5)
-    
-    pdf.section_title("4. MAPEAMENTO POR LOCALIDADE (TOP 5)")
-    y_start = pdf.get_y()
-    
-    pdf.set_xy(10, y_start); pdf.set_font('Arial', 'B', 9); pdf.cell(60, 6, fix_text("MAIS SOLICITAÇÕES"), 0, 1, 'L'); pdf.set_font('Arial', '', 8)
-    for b, v in stats['top_total'].items(): pdf.cell(50, 5, fix_text(str(b)[:25]), 0, 0); pdf.cell(10, 5, str(v), 0, 1, 'R')
-        
-    pdf.set_xy(75, y_start); pdf.set_font('Arial', 'B', 9); pdf.cell(60, 6, fix_text("MAIS REALIZADOS"), 0, 1, 'L'); pdf.set_xy(75, pdf.get_y()); pdf.set_font('Arial', '', 8)
-    for b, v in stats['top_feitos'].items(): pdf.set_x(75); pdf.cell(50, 5, fix_text(str(b)[:25]), 0, 0); pdf.cell(10, 5, str(v), 0, 1, 'R')
-
-    pdf.set_xy(140, y_start); pdf.set_font('Arial', 'B', 9); pdf.cell(60, 6, fix_text("MAIS PENDENTES"), 0, 1, 'L'); pdf.set_xy(140, pdf.get_y()); pdf.set_font('Arial', '', 8)
-    for b, v in stats['top_pend'].items(): pdf.set_x(140); pdf.cell(50, 5, fix_text(str(b)[:25]), 0, 0); pdf.cell(10, 5, str(v), 0, 1, 'R')
-        
-    pdf.ln(10); pdf.set_y(y_start + 40)
-    
-    pdf.section_title("5. INDICADORES VISUAIS")
-    if os.path.exists('temp_chart_pie.png'): pdf.image('temp_chart_pie.png', x=15, w=90)
-    if os.path.exists('temp_chart_line.png'): pdf.set_y(pdf.get_y() - 60); pdf.image('temp_chart_line.png', x=110, w=90)
-    
-    # Se houver mapa, avisa
-    if os.path.exists('temp_map_capture.png'): # (Opcional, futuro)
-        pdf.add_page(); pdf.section_title("6. MAPA DE CALOR"); pdf.image('temp_map_capture.png', x=10, w=190)
-
-    pdf.output("Relatorio_Gestao_Consolidado.pdf")
-    files.download("Relatorio_Gestao_Consolidado.pdf")
-
-def gerar_pdf_lista_simples(df, titulo="LISTA DE SERVIÇO"):
-    pdf = FPDF(); pdf.add_page()
-    pdf.set_font('Arial', 'B', 12); pdf.cell(0, 10, fix_text(titulo), 0, 1, 'C'); pdf.ln(5)
-    pdf.set_font('Arial', 'B', 8)
-    pdf.cell(90, 6, "LOCAL / RUA", 1); pdf.cell(30, 6, "DATA", 1); pdf.cell(40, 6, "TIPO", 1); pdf.cell(30, 6, "STATUS", 1); pdf.ln()
-    pdf.set_font('Arial', '', 8)
-    for _, row in df.head(500).iterrows():
-        rua = fix_text(str(row.iloc[0])[:50])
-        dt = row['DT_ENTRADA'].strftime('%d/%m') if pd.notnull(row['DT_ENTRADA']) else "-"
-        tipo = fix_text(str(row['CATEGORIA'])[:20])
-        pdf.cell(90, 6, rua, 1); pdf.cell(30, 6, dt, 1)
-        pdf.cell(40, 6, tipo, 1); pdf.cell(30, 6, "PENDENTE", 1); pdf.ln()
-    pdf.output("Lista_Operacional.pdf")
-    files.download("Lista_Operacional.pdf")
-
 # ==========================================
-# 6. INTERFACE WEB
+# 6. INTERFACE WEB (STREAMLIT)
 # ==========================================
 
 st.title("🚀 SMOLamp 7.3 - Edição Completa (PWA)")
@@ -250,10 +156,12 @@ st.markdown("---")
 # BARRA LATERAL
 with st.sidebar:
     st.header("📂 Arquivo de Dados")
-    uploaded_file = st.file_uploader("Arraste o Excel aqui (Rede Local)", type=['xlsx'])
+    uploaded_file = st.file_uploader("Arraste o Excel aqui", type=['xlsx'])
     
     st.markdown("---")
     st.header("🖼️ Identidade Visual")
+    
+    # Verifica imagens no sistema
     tem_brasao = os.path.exists('brasao_pmcm.png')
     tem_sec = os.path.exists('sec_obras.png')
     tem_ico = os.path.exists('SMOLamp (1).ico') or os.path.exists('SMOLamp (1).png')
@@ -267,7 +175,7 @@ with st.sidebar:
         up_sec = st.file_uploader("Logo Secretaria", type=['png', 'jpg'])
         up_ico = st.file_uploader("Ícone", type=['png', 'ico'])
 
-# PROCESSAMENTO PRELIMINAR IMAGENS
+# PROCESSAMENTO DE IMAGENS
 path_brasao = "brasao_pmcm.png" if os.path.exists("brasao_pmcm.png") else None
 path_sec = "sec_obras.png" if os.path.exists("sec_obras.png") else None
 path_ico = "SMOLamp (1).png" if os.path.exists("SMOLamp (1).png") else ("SMOLamp (1).ico" if os.path.exists("SMOLamp (1).ico") else None)
@@ -280,15 +188,18 @@ if up_sec:
     with open(path_sec, "wb") as f: f.write(up_sec.getbuffer())
 if up_ico:
     path_ico = "temp_ico.png"
-    if up_ico.name.endswith('.ico'):
-        try:
-            img = Image.open(up_ico); img.save(path_ico, format='PNG')
-        except: path_ico = None
-    else:
-        with open(path_ico, "wb") as f: f.write(up_ico.getbuffer())
+    with open(path_ico, "wb") as f: f.write(up_ico.getbuffer())
+    # Converte se for ICO
+    try:
+        img = Image.open(path_ico)
+        path_ico = "temp_ico_conv.png"
+        img.save(path_ico, format='PNG')
+    except: pass
 elif path_ico and path_ico.endswith('.ico'):
     try:
-        img = Image.open(path_ico); path_ico = "temp_ico_converted.png"; img.save(path_ico, format='PNG')
+        img = Image.open(path_ico)
+        path_ico = "temp_ico_conv.png"
+        img.save(path_ico, format='PNG')
     except: pass
 
 # CARREGAMENTO DO EXCEL
@@ -296,7 +207,8 @@ df = pd.DataFrame()
 mapa = {}
 
 if uploaded_file:
-    try: df_raw = pd.read_excel(uploaded_file, sheet_name='Iluminação', header=None)
+    try:
+        df_raw = pd.read_excel(uploaded_file, sheet_name='Iluminação', header=None)
     except:
         try: df_raw = pd.read_excel(uploaded_file, header=None)
         except: st.error("Erro ao ler arquivo."); st.stop()
@@ -349,7 +261,7 @@ if uploaded_file:
                 return 'Outros'
             df['CATEGORIA'] = df[mapa.get('TIPO_PEDIDO', 'PEDIDO')].apply(limpar_tipo)
 
-# PAINEL
+# PAINEL DE CONTROLE
 if not df.empty:
     c1, c2, c3, c4 = st.columns(4)
     hoje = datetime.now()
@@ -371,6 +283,7 @@ if not df.empty:
         
         mask_in = (df_work['DT_ENTRADA'] >= d_inicio) & (df_work['DT_ENTRADA'] <= d_fim)
         entradas = len(df_work[mask_in])
+        
         mask_out = (df_work['DT_SAIDA'] >= d_inicio) & (df_work['DT_SAIDA'] <= d_fim) & (df_work['STATUS_FINAL'] == 'FEITO')
         realizados = len(df_work[mask_out])
         
@@ -429,5 +342,100 @@ if not df.empty:
         with g2:
             st.subheader("Evolução")
             fig2, ax2 = plt.subplots(figsize=(6,4))
-            if not df_work[mask_in].empty: df_work[mask_in].set_index('DT_ENTRADA').resample('W-MON').size().plot(ax=ax2, label='Entradas', color='#2196f3')
-            if not df_work[mask_out].empty: df_work[mask_out].set_index('DT_SAIDA').resample('W-MON').size().plot(ax=ax2
+            # CORREÇÃO DO ERRO DE SINTAXE AQUI
+            if not df_work[mask_in].empty: 
+                df_work[mask_in].set_index('DT_ENTRADA').resample('W-MON').size().plot(ax=ax2, label='Entradas', color='#2196f3')
+            if not df_work[mask_out].empty: 
+                df_work[mask_out].set_index('DT_SAIDA').resample('W-MON').size().plot(ax=ax2, label='Realizados', color='#4caf50')
+            ax2.legend()
+            st.pyplot(fig2)
+            fig2.savefig('temp_chart_line.png', bbox_inches='tight')
+
+        # MAPA DE CALOR
+        if HAS_FOLIUM:
+            st.markdown("---")
+            st.subheader("🗺️ Mapa de Calor (Geoespacial)")
+            try:
+                df_map = df_pend_safra.copy()
+                df_map['LAT'] = df_map[mapa['LOCALIDADE']].str.upper().map(lambda x: COORDS_BAIRROS.get(x, [None, None])[0])
+                df_map['LON'] = df_map[mapa['LOCALIDADE']].str.upper().map(lambda x: COORDS_BAIRROS.get(x, [None, None])[1])
+                df_map = df_map.dropna(subset=['LAT', 'LON'])
+                if not df_map.empty:
+                    heat_data = [[row['LAT'], row['LON']] for index, row in df_map.iterrows()]
+                    m = folium.Map(location=[-22.4635, -42.6539], zoom_start=11)
+                    HeatMap(heat_data, radius=15).add_to(m)
+                    components.html(m._repr_html_(), height=500)
+                else:
+                    st.warning("Sem dados geográficos suficientes para o mapa.")
+            except: pass
+
+        # PDF REPORT
+        st.markdown("---")
+        st.subheader("🖨️ Relatórios")
+        
+        pdf = PDFReport()
+        pdf.set_images(path_brasao, path_sec, path_ico)
+        pdf.add_page()
+        
+        pdf.section_title("1. DIAGNÓSTICO TÉCNICO DETALHADO")
+        txt_final = st.text_area("Edite a análise:", texto_ia, height=150)
+        pdf.set_font('Arial', '', 10); pdf.multi_cell(0, 5, fix_text(txt_final)); pdf.ln(5)
+        
+        pdf.section_title("2. BALANÇO OPERACIONAL (PERÍODO)")
+        pdf.ln(2); pdf.set_font('Arial', 'B', 10)
+        pdf.cell(47, 10, "TOTAL", 1, 0, 'C'); pdf.cell(47, 10, "REALIZADOS", 1, 0, 'C')
+        pdf.cell(47, 10, "PENDENTES", 1, 0, 'C'); pdf.cell(47, 10, "EFICIENCIA", 1, 1, 'C')
+        pdf.set_font('Arial', 'B', 14)
+        pdf.cell(47, 15, str(entradas), 1, 0, 'C')
+        pdf.set_text_color(0, 100, 0); pdf.cell(47, 15, str(realizados), 1, 0, 'C')
+        pdf.set_text_color(150, 0, 0); pdf.cell(47, 15, str(pendentes_safra), 1, 0, 'C')
+        pdf.set_text_color(0, 0, 0); pdf.cell(47, 15, f"{eficiencia:.1%}", 1, 1, 'C'); pdf.ln(15)
+        
+        if preventiva_total > 0:
+            pdf.section_title("3. MANUTENÇÃO PREVENTIVA")
+            pdf.set_font('Arial', '', 10)
+            txt_prev = f"• Média Informada: {w_preventiva} pontos/dia | Dias Úteis: {dias_uteis}\n• TOTAL RECUPERADO: +{preventiva_total} lâmpadas"
+            pdf.multi_cell(0, 6, fix_text(txt_prev), 1, 'L'); pdf.ln(5)
+            
+        pdf.section_title("4. TRÍADE DE RANKINGS (TOP 5)")
+        y = pdf.get_y()
+        pdf.set_xy(10, y); pdf.cell(60, 6, fix_text("MAIS PEDIDOS"), 0, 1)
+        pdf.set_font('Arial', '', 8)
+        for b, v in top_total.items(): pdf.cell(50, 5, fix_text(str(b)[:25]), 0, 0); pdf.cell(10, 5, str(v), 0, 1)
+        
+        pdf.set_xy(75, y); pdf.set_font('Arial', 'B', 10); pdf.cell(60, 6, fix_text("MAIS FEITOS"), 0, 1)
+        pdf.set_font('Arial', '', 8)
+        for b, v in top_feitos.items(): 
+            pdf.set_x(75); pdf.cell(50, 5, fix_text(str(b)[:25]), 0, 0); pdf.cell(10, 5, str(v), 0, 1)
+            
+        pdf.set_xy(140, y); pdf.set_font('Arial', 'B', 10); pdf.cell(60, 6, fix_text("MAIS PENDENTES"), 0, 1)
+        pdf.set_font('Arial', '', 8)
+        for b, v in top_pend.items(): 
+            pdf.set_x(140); pdf.cell(50, 5, fix_text(str(b)[:25]), 0, 0); pdf.cell(10, 5, str(v), 0, 1)
+        
+        pdf.ln(10); pdf.set_y(y+40)
+        
+        pdf.section_title("5. INDICADORES VISUAIS")
+        if os.path.exists('temp_chart_pie.png'): pdf.image('temp_chart_pie.png', x=15, w=90)
+        if os.path.exists('temp_chart_line.png'): 
+            pdf.set_y(pdf.get_y() - 60); pdf.image('temp_chart_line.png', x=110, w=90)
+            
+        pdf_bytes = pdf.output(dest='S').encode('latin-1')
+        st.download_button("📄 BAIXAR RELATÓRIO GESTÃO", pdf_bytes, "Relatorio_Gestao.pdf", "application/pdf")
+        
+        # PDF LISTA
+        pdf_l = FPDF(); pdf_l.add_page()
+        pdf_l.set_font('Arial', 'B', 12); pdf_l.cell(0, 10, fix_text("LISTA DE SERVIÇO (PENDENTES)"), 0, 1, 'C'); pdf_l.ln(5)
+        pdf_l.set_font('Arial', 'B', 8)
+        pdf_l.cell(90, 6, "LOCAL", 1); pdf_l.cell(30, 6, "DATA", 1); pdf_l.cell(40, 6, "TIPO", 1); pdf_l.cell(30, 6, "STATUS", 1); pdf_l.ln()
+        pdf_l.set_font('Arial', '', 8)
+        for _, row in df_pend_safra.sort_values('DT_ENTRADA').head(500).iterrows():
+            pdf_l.cell(90, 6, fix_text(str(row[mapa['RUA']])[:50]), 1)
+            pdf_l.cell(30, 6, row['DT_ENTRADA'].strftime('%d/%m') if pd.notnull(row['DT_ENTRADA']) else "-", 1)
+            pdf_l.cell(40, 6, fix_text(str(row['CATEGORIA'])[:20]), 1)
+            pdf_l.cell(30, 6, "PENDENTE", 1); pdf_l.ln()
+        list_bytes = pdf_l.output(dest='S').encode('latin-1')
+        st.download_button("📋 BAIXAR LISTA DE SERVIÇO", list_bytes, "Lista_Servico.pdf", "application/pdf")
+
+else:
+    st.info("Aguardando upload do arquivo Excel...")
