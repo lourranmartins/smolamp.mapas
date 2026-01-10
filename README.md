@@ -1,0 +1,1 @@
+# smolamp.mapas
