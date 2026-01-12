@@ -317,12 +317,13 @@ if not df.empty:
         }
         texto_ia = gerar_analise_robusta(stats)
         
-        # DASHBOARD
-        k1, k2, k3, k4 = st.columns(4)
+        # DASHBOARD (CORRIGIDO PARA MOSTRAR MÉDIAS)
+        k1, k2, k3, k4, k5 = st.columns(5)
         k1.metric("TOTAL", entradas)
         k2.metric("REALIZADOS", realizados)
         k3.metric("PENDENTES", pendentes_safra, delta_color="inverse")
         k4.metric("EFICIÊNCIA", f"{eficiencia:.1%}")
+        k5.metric("MÉDIA/DIA", f"{media_dia:.1f}")
         
         if preventiva_total > 0:
             st.success(f"🛠️ **Manutenção Preventiva:** +{preventiva_total} lâmpadas (Estimativa)")
@@ -351,14 +352,15 @@ if not df.empty:
             st.pyplot(fig2)
             fig2.savefig('temp_chart_line.png', bbox_inches='tight')
 
-        # MAPA DE CALOR
+        # MAPA DE CALOR (CORRIGIDO)
         if HAS_FOLIUM:
             st.markdown("---")
             st.subheader("🗺️ Mapa de Calor (Geoespacial)")
             try:
                 df_map = df_pend_safra.copy()
-                df_map['LAT'] = df_map[mapa['LOCALIDADE']].str.upper().map(lambda x: COORDS_BAIRROS.get(x, [None, None])[0])
-                df_map['LON'] = df_map[mapa['LOCALIDADE']].str.upper().map(lambda x: COORDS_BAIRROS.get(x, [None, None])[1])
+                # Correção crítica: remover espaços e padronizar texto para bater com COORDS_BAIRROS
+                df_map['LAT'] = df_map[mapa['LOCALIDADE']].astype(str).str.strip().str.upper().map(lambda x: COORDS_BAIRROS.get(x, [None, None])[0])
+                df_map['LON'] = df_map[mapa['LOCALIDADE']].astype(str).str.strip().str.upper().map(lambda x: COORDS_BAIRROS.get(x, [None, None])[1])
                 df_map = df_map.dropna(subset=['LAT', 'LON'])
                 if not df_map.empty:
                     heat_data = [[row['LAT'], row['LON']] for index, row in df_map.iterrows()]
@@ -366,8 +368,8 @@ if not df.empty:
                     HeatMap(heat_data, radius=15).add_to(m)
                     components.html(m._repr_html_(), height=500)
                 else:
-                    st.warning("Sem dados geográficos suficientes para o mapa.")
-            except: pass
+                    st.warning("Sem dados geográficos suficientes para o mapa (Verifique nomes dos bairros).")
+            except Exception as e: st.error(f"Erro no mapa: {e}")
 
         # PDF REPORT
         st.markdown("---")
@@ -381,15 +383,22 @@ if not df.empty:
         txt_final = st.text_area("Edite a análise:", texto_ia, height=150)
         pdf.set_font('Arial', '', 10); pdf.multi_cell(0, 5, fix_text(txt_final)); pdf.ln(5)
         
+        # TABELA DO PDF (CORRIGIDA PARA 5 COLUNAS COM MÉDIA)
         pdf.section_title("2. BALANÇO OPERACIONAL (PERÍODO)")
-        pdf.ln(2); pdf.set_font('Arial', 'B', 10)
-        pdf.cell(47, 10, "TOTAL", 1, 0, 'C'); pdf.cell(47, 10, "REALIZADOS", 1, 0, 'C')
-        pdf.cell(47, 10, "PENDENTES", 1, 0, 'C'); pdf.cell(47, 10, "EFICIENCIA", 1, 1, 'C')
+        pdf.ln(2); pdf.set_font('Arial', 'B', 9) # Fonte reduzida levemente para caber
+        # Largura total ~190mm. 190/5 colunas = 38mm cada
+        w_col = 38
+        pdf.cell(w_col, 10, "TOTAL", 1, 0, 'C'); pdf.cell(w_col, 10, "REALIZADOS", 1, 0, 'C')
+        pdf.cell(w_col, 10, "PENDENTES", 1, 0, 'C'); pdf.cell(w_col, 10, "EFICIENCIA", 1, 0, 'C')
+        pdf.cell(w_col, 10, "MEDIA/DIA", 1, 1, 'C')
+        
         pdf.set_font('Arial', 'B', 14)
-        pdf.cell(47, 15, str(entradas), 1, 0, 'C')
-        pdf.set_text_color(0, 100, 0); pdf.cell(47, 15, str(realizados), 1, 0, 'C')
-        pdf.set_text_color(150, 0, 0); pdf.cell(47, 15, str(pendentes_safra), 1, 0, 'C')
-        pdf.set_text_color(0, 0, 0); pdf.cell(47, 15, f"{eficiencia:.1%}", 1, 1, 'C'); pdf.ln(15)
+        pdf.cell(w_col, 15, str(entradas), 1, 0, 'C')
+        pdf.set_text_color(0, 100, 0); pdf.cell(w_col, 15, str(realizados), 1, 0, 'C')
+        pdf.set_text_color(150, 0, 0); pdf.cell(w_col, 15, str(pendentes_safra), 1, 0, 'C')
+        pdf.set_text_color(0, 0, 0); pdf.cell(w_col, 15, f"{eficiencia:.1%}", 1, 0, 'C')
+        pdf.set_text_color(0, 0, 150); pdf.cell(w_col, 15, f"{media_dia:.1f}", 1, 1, 'C'); pdf.set_text_color(0, 0, 0)
+        pdf.ln(15)
         
         if preventiva_total > 0:
             pdf.section_title("3. MANUTENÇÃO PREVENTIVA")
@@ -439,3 +448,4 @@ if not df.empty:
 
 else:
     st.info("Aguardando upload do arquivo Excel...")
+
