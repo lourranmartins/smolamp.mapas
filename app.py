@@ -270,7 +270,18 @@ if not df.empty:
     with c3: w_chuva = st.number_input("Dias Chuva", 0, value=0)
     with c4: w_preventiva = st.number_input("Média Prev./Dia", 0, value=0)
     
-    opcoes = ['TODOS'] + sorted(df[mapa['LOCALIDADE']].astype(str).unique())
+   import pandas as pd
+
+# Define um fallback seguro para não quebrar a interface
+opcoes = ['TODOS']
+
+# Só tenta puxar os dados se as variáveis já existirem e forem do tipo certo
+if isinstance(df, pd.DataFrame) and isinstance(mapa, dict):
+    coluna = mapa.get('LOCALIDADE')
+    
+    # Confirma se a coluna mapeada realmente existe dentro do DataFrame atual
+    if coluna and coluna in df.columns:
+        opcoes = ['TODOS'] + sorted(df[coluna].astype(str).unique())
     w_localidade = st.multiselect("Bairros", options=opcoes, default=['TODOS'])
     
     if st.button("PROCESSAR DADOS", type="primary"):
