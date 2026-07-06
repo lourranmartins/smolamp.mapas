@@ -269,8 +269,6 @@ if not df.empty:
     with c2: d_fim = st.date_input("Data Fim", value=hoje)
     with c3: w_chuva = st.number_input("Dias Chuva", 0, value=0)
     with c4: w_preventiva = st.number_input("Média Prev./Dia", 0, value=0)
-    
-   import pandas as pd
 
 # Define um fallback seguro para não quebrar a interface
 opcoes = ['TODOS']
