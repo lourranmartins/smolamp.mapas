@@ -280,11 +280,11 @@ if isinstance(df, pd.DataFrame) and isinstance(mapa, dict):
     # Confirma se a coluna mapeada realmente existe dentro do DataFrame atual
     if coluna and coluna in df.columns:
         # O .dropna() remove as células vazias da planilha.
-# As aspas em 'str' forçam o tipo e evitam conflitos com variáveis locais.
-valores_limpos = df[coluna].dropna().astype('str').unique()
+        # As aspas em 'str' forçam o tipo e evitam conflitos com variáveis locais.
+        valores_limpos = df[coluna].dropna().astype('str').unique()
 
-opcoes = ['TODOS'] + sorted(valores_limpos)
-    w_localidade = st.multiselect("Bairros", options=opcoes, default=['TODOS'])
+        opcoes = ['TODOS'] + sorted(valores_limpos)
+        w_localidade = st.multiselect("Bairros", options=opcoes, default=['TODOS'])
     
     if st.button("PROCESSAR DADOS", type="primary"):
         df_work = df.copy()
